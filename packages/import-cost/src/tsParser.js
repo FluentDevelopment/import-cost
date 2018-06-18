@@ -13,18 +13,32 @@ function gatherPackages(sourceFile) {
   function gatherPackagesFromNode(node) {
     if (ts.isImportDeclaration(node)) {
       const importNode = node;
+      let importedProperties = 'entireModule';
+      let importClauseText = `* as ${importedProperties}`;
+      if (importNode.importClause) {
+        if (!importNode.importClause.namedBindings) {
+          importedProperties = importNode.importClause.name.escapedText || 'defaultExport';
+        } else if (ts.isNamespaceImport(importNode.importClause.namedBindings)) {
+          importedProperties = importNode.importClause.namedBindings.name.escapedText;
+        } else if (ts.isNamedImports(importNode.importClause.namedBindings)) {
+          const namedImportElements = (importNode.importClause.namedBindings.elements || []);
+          if (!namedImportElements.length) {
+            throw new Error('NamedImports must have at least one element');
+          }
+          importedProperties = `{ ${namedImportElements.map(elem => (elem.propertyName || elem.name).text).sort().join(', ')} }`;
+        } else {
+          throw new Error(`Unknown named binding kind ${importNode.importClause.namedBindings.kind}`);
+        }
+        importClauseText = importedProperties;
+      }
+      const importStatement = `import ${importClauseText} from '${importNode.moduleSpecifier.text}';\nconsole.log(${importedProperties});`;
+
       const packageInfo = {
         fileName: sourceFile.fileName,
         name: importNode.moduleSpecifier.text,
         line: sourceFile.getLineAndCharacterOfPosition(importNode.getStart()).line + 1,
-        string: importNode.getText()
+        string: importStatement
       };
-
-      const importClause = importNode.importClause && importNode.importClause.getText().replace('* as ', '');
-      if (importClause) {
-        packageInfo.string += `\nconsole.log(${importClause});`;
-      }
-
       packages.push(packageInfo);
     } else if (ts.isCallExpression(node)) {
       const callExpressionNode = node;
